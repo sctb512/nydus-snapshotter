@@ -83,7 +83,9 @@ func (p *plugin) Configure(config, runtime, version string) (stub.EventMask, err
 	return p.mask, nil
 }
 
-func (p *plugin) StartContainer(_ *api.PodSandbox, container *api.Container) error {
+func (p *plugin) StartContainer(pod *api.PodSandbox, container *api.Container) error {
+	dump("StartContainer", "pod", pod, "container", container)
+
 	imageName := GetImageName(container.Annotations)
 	persistFile := filepath.Join(cfg.PersistDir, imageName)
 	if cfg.Timeout > 0 {
@@ -118,6 +120,39 @@ func GetImageName(annotations map[string]string) string {
 	imageNameSlice := strings.Split(image, "/")
 	imageName := imageNameSlice[len(imageNameSlice)-1]
 	return imageName
+}
+
+func dump(args ...interface{}) {
+	var (
+		prefix string
+		idx    int
+	)
+
+	if len(args)&0x1 == 1 {
+		prefix = args[0].(string)
+		idx++
+	}
+
+	for ; idx < len(args)-1; idx += 2 {
+		tag, obj := args[idx], args[idx+1]
+		msg, err := yaml.Marshal(obj)
+		if err != nil {
+			log.Infof("%s: %s: failed to dump object: %v", prefix, tag, err)
+			continue
+		}
+
+		if prefix != "" {
+			log.Infof("%s: %s:", prefix, tag)
+			for _, line := range strings.Split(strings.TrimSpace(string(msg)), "\n") {
+				log.Infof("%s:    %s", prefix, line)
+			}
+		} else {
+			log.Infof("%s:", tag)
+			for _, line := range strings.Split(strings.TrimSpace(string(msg)), "\n") {
+				log.Infof("  %s", line)
+			}
+		}
+	}
 }
 
 func (p *plugin) onClose() {
