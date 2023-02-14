@@ -70,6 +70,7 @@ func (fserver *Server) RunServer() error {
 	cmd := exec.Command(fserver.BinaryPath)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Cloneflags: syscall.CLONE_NEWNS,
+		Setpgid:    true,
 	}
 	cmd.Env = append(cmd.Env, "_MNTNS_PID="+fmt.Sprint(fserver.ContainerPid))
 	cmd.Env = append(cmd.Env, "_TARGET=/")
@@ -107,8 +108,8 @@ func (fserver *Server) RunServer() error {
 
 func (fserver *Server) StopServer() {
 	if fserver.Cmd != nil {
-		if err := fserver.Cmd.Process.Signal(syscall.SIGINT); err != nil {
-			fserver.Cmd.Process.Kill()
+		if err := fserver.Cmd.Process.Kill(); err == nil {
+			fserver.Cmd.Process.Wait()
 		}
 	}
 }
