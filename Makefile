@@ -4,6 +4,7 @@ PKG = github.com/containerd/nydus-snapshotter
 PACKAGES ?= $(shell go list ./... | grep -v /tests)
 SUDO = $(shell which sudo)
 GO_EXECUTABLE_PATH ?= $(shell which go)
+CARGO ?= $(shell which cargo)
 NYDUS_BUILDER ?= /usr/bin/nydus-image
 NYDUS_NYDUSD ?= /usr/bin/nydusd
 GOOS ?= linux
@@ -36,9 +37,15 @@ endif
 
 LDFLAGS = -s -w -X ${PKG}/version.Version=${VERSION} -X ${PKG}/version.Revision=$(REVISION) -X ${PKG}/version.BuildTimestamp=$(BUILD_TIMESTAMP)
 
+OPTIMIZER_SERVER = tools/optimizer-server
+OPTIMIZER_SERVER_TOML = ${OPTIMIZER_SERVER}/Cargo.toml
+OPTIMIZER_SERVER_BIN = ${OPTIMIZER_SERVER}/target/release/optimizer-server
+
 .PHONY: build
 build:
 	GOOS=${GOOS} GOARCH=${GOARCH} ${PROXY} go build -ldflags "$(LDFLAGS)" -v -o bin/containerd-nydus-grpc ./cmd/containerd-nydus-grpc
+	${CARGO} fmt --manifest-path ${OPTIMIZER_SERVER_TOML} -- --check
+	${CARGO} build --release --manifest-path ${OPTIMIZER_SERVER_TOML} && cp ${OPTIMIZER_SERVER_BIN} ./bin
 
 static-release:
 	CGO_ENABLED=0 ${PROXY} GOOS=${GOOS} GOARCH=${GOARCH} go build -ldflags "$(LDFLAGS) -extldflags -static" -v -o bin/containerd-nydus-grpc ./cmd/containerd-nydus-grpc
@@ -49,6 +56,7 @@ converter:
 
 .PHONY: clear
 clear:
+	${CARGO} clean --manifest-path ${OPTIMIZER_SERVER_TOML}
 	rm -f bin/*
 	rm -rf _out
 
