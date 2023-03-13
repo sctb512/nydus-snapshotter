@@ -22,11 +22,27 @@ type EventInfo struct {
 	Timestamp int64  `json:"timestamp"`
 }
 
+func (c *Client) ReadEventBytes() ([]byte, error) {
+	var (
+		isPrefix   = true
+		err        error
+		line, data []byte
+	)
+
+	for isPrefix && err == nil {
+		line, isPrefix, err = c.Reader.ReadLine()
+		data = append(data, line...)
+	}
+	if err != io.EOF {
+		return data, err
+	}
+
+	return data, nil
+}
+
 func (c *Client) GetEventInfo() ([]EventInfo, error) {
-	// Before reaching '\n', the reader has successfully read
-	// the event information from optimizer server.
-	data, err := c.Reader.ReadBytes('\n')
-	if err != nil && err != io.EOF {
+	data, err := c.ReadEventBytes()
+	if err != nil {
 		return nil, err
 	}
 
