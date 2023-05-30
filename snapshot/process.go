@@ -13,6 +13,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
+	"github.com/containerd/containerd/log"
 	"github.com/containerd/containerd/mount"
 	snpkg "github.com/containerd/containerd/pkg/snapshotters"
 	"github.com/containerd/containerd/snapshots/storage"
@@ -32,12 +33,35 @@ func chooseProcessor(ctx context.Context, logger *logrus.Entry,
 		return false, mounts, err
 	}
 
+	ociSkipHandler := func() (bool, []mount.Mount, error) {
+		// Prepare a space for containerd to make snapshot from container image.
+		mounts, _ := sn.mounts(ctx, labels, s)
+
+		log.L.Infof("[abin] in ociSkipHandler")
+		// fetchWaiter := fetchWaiter{parent: parent}
+
+		// fetchWaiter.wg.Add(1)
+		go func() {
+			err := sn.fs.TryFetchAndApplyLayer(ctx, labels, mounts)
+			if err != nil {
+				log.L.WithError(err).Errorf("failed to fetch and apply layer")
+				return
+			}
+			// fetchWaiter.wg.Done()
+		}()
+		// sn.fetchWaiter[key] = fetchWaiter
+
+		return false, mounts, err
+	}
+
 	target, remote := labels[label.TargetSnapshotRef]
 
 	skipHandler := func() (bool, []mount.Mount, error) {
 		// The handler tells containerd do not download and unpack layer.
 		return true, nil, nil
 	}
+
+	log.L.Infof("[abin] chooseProcessor remote: %v, target: %s", remote, target)
 
 	if remote {
 		// Containerd won't consume mount slice for below snapshots
@@ -64,6 +88,10 @@ func chooseProcessor(ctx context.Context, logger *logrus.Entry,
 			}
 		default:
 			// OCI image is also marked with "containerd.io/snapshot.ref" by Containerd
+			if sn.fs.StreamUnpackEnabled() {
+				log.L.Infof("[abin] oci skip handler")
+				handler = ociSkipHandler
+			}
 		}
 	} else {
 		// Container writable layer comes into this branch. It can't be committed within this Prepare
@@ -102,6 +130,20 @@ func chooseProcessor(ctx context.Context, logger *logrus.Entry,
 				handler = remoteHandler(id, info.Labels)
 			}
 		}
+
+		// if sn.fs.StreamUnpackEnabled() {
+		// 	log.L.Infof("[abin] oci skip handler")
+		// 	var parentKey = parent
+		// 	for {
+		// 		fetcher := sn.fetchWaiter[parentKey]
+		// 		fetcher.wg.Wait()
+		// 		parentKey = fetcher.parent
+
+		// 		if parentKey == "" {
+		// 			break
+		// 		}
+		// 	}
+		// }
 
 		if sn.fs.StargzEnabled() {
 			// `pInfo` must be the uppermost parent layer

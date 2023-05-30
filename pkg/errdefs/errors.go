@@ -24,6 +24,11 @@ var (
 	ErrDeviceBusy      = errors.New("device busy")     // represents not supported and unimplemented
 )
 
+// IsInvalidArgument returns true if the error is due to an invalid argument
+func IsInvalidArgument(err error) bool {
+	return errors.Is(err, ErrInvalidArgument)
+}
+
 // IsAlreadyExists returns true if the error is due to already exists
 func IsAlreadyExists(err error) bool {
 	return errors.Is(err, ErrAlreadyExists)

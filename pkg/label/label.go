@@ -62,3 +62,8 @@ func IsNydusMetaLayer(labels map[string]string) bool {
 	_, ok := labels[NydusMetaLayer]
 	return ok
 }
+
+// func IsOCIBlobLayer(labels map[string]string) bool {
+// 	_, ok := labels[CRILayerDigest]
+// 	return ok
+// }

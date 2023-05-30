@@ -16,6 +16,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/pkg/errors"
 
@@ -61,6 +62,12 @@ type snapshotter struct {
 	enableNydusOverlayFS bool
 	syncRemove           bool
 	cleanupOnClose       bool
+	fetchWaiter          map[string]fetchWaiter
+}
+
+type fetchWaiter struct {
+	parent string
+	wg     sync.WaitGroup
 }
 
 func NewSnapshotter(ctx context.Context, cfg *config.SnapshotterConfig) (snapshots.Snapshotter, error) {
@@ -142,12 +149,13 @@ func NewSnapshotter(ctx context.Context, cfg *config.SnapshotterConfig) (snapsho
 		opts = append(opts, filesystem.WithCacheManager(cacheMgr))
 	}
 
-	if cfg.Experimental.EnableReferrerDetect {
-		// FIXME: get the insecure option from nydusd config.
-		_, backendConfig := daemonConfig.StorageBackend()
-		referrerMgr := referrer.NewManager(backendConfig.SkipVerify)
-		opts = append(opts, filesystem.WithReferrerManager(referrerMgr))
-	}
+	// FIXME: get the insecure option from nydusd config.
+	_, backendConfig := daemonConfig.StorageBackend()
+	referrerMgr := referrer.NewManager(backendConfig.SkipVerify,
+		cfg.Experimental.EnableReferrerDetect, cfg.Experimental.EnableStreamUnpack)
+	log.L.Infof("[abin] EnableReferrerDetect: %v EnableStreamUnpack: %v",
+		cfg.Experimental.EnableReferrerDetect, cfg.Experimental.EnableStreamUnpack)
+	opts = append(opts, filesystem.WithReferrerManager(referrerMgr))
 
 	hasDaemon := config.GetDaemonMode() != config.DaemonModeNone
 
@@ -212,6 +220,7 @@ func NewSnapshotter(ctx context.Context, cfg *config.SnapshotterConfig) (snapsho
 		hasDaemon:            hasDaemon,
 		enableNydusOverlayFS: cfg.SnapshotsConfig.EnableNydusOverlayFS,
 		cleanupOnClose:       cfg.CleanupOnClose,
+		fetchWaiter:          make(map[string]fetchWaiter, 10),
 	}, nil
 }
 

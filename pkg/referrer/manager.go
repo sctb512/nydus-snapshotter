@@ -10,28 +10,42 @@ import (
 	"context"
 
 	"github.com/containerd/containerd/log"
+	"github.com/containerd/containerd/mount"
 	"github.com/containerd/nydus-snapshotter/pkg/auth"
 	"github.com/golang/groupcache/lru"
 	"github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/singleflight"
 )
 
 type Manager struct {
-	insecure bool
-	cache    *lru.Cache
-	sg       singleflight.Group
+	insecure      bool
+	cache         *lru.Cache
+	sg            singleflight.Group
+	refererDetach bool
+	streamUnpack  bool
 }
 
-func NewManager(insecure bool) *Manager {
+func NewManager(insecure, refererDetach, streamUnpack bool) *Manager {
 	manager := Manager{
-		insecure: insecure,
-		cache:    lru.New(500),
-		sg:       singleflight.Group{},
+		insecure:      insecure,
+		cache:         lru.New(500),
+		sg:            singleflight.Group{},
+		refererDetach: refererDetach,
+		streamUnpack:  streamUnpack,
 	}
 
 	return &manager
+}
+
+func (manager *Manager) ReferrerDetectEnabled() bool {
+	return manager.refererDetach
+}
+
+func (manager *Manager) StreamUnpackEnabled() bool {
+	return manager.streamUnpack
 }
 
 // CheckReferrer attempts to fetch the referrers and parse out
@@ -85,4 +99,21 @@ func (manager *Manager) TryFetchMetadata(ctx context.Context, ref string, manife
 
 	referrer := newReferrer(keyChain, manager.insecure)
 	return referrer.fetchMetadata(ctx, ref, *metaLayer, metadataPath)
+}
+
+// TryFetchAndApplyLayer try to fetch and apply PCI blob layer with mounts.
+func (manager *Manager) TryFetchAndApplyLayer(ctx context.Context, ref string, digest digest.Digest, mounts []mount.Mount) error {
+	keyChain, err := auth.GetKeyChainByRef(ref, nil)
+	if err != nil {
+		return errors.Wrap(err, "get key chain")
+	}
+
+	logrus.Infof("[abin] manager: %#v", manager)
+	referrer := newReferrer(keyChain, manager.insecure)
+
+	if err := referrer.applyLayer(ctx, ref, digest, mounts); err != nil {
+		return err
+	}
+
+	return nil
 }

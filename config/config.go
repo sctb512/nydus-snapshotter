@@ -98,6 +98,7 @@ const (
 type Experimental struct {
 	EnableStargz         bool `toml:"enable_stargz"`
 	EnableReferrerDetect bool `toml:"enable_referrer_detect"`
+	EnableStreamUnpack   bool `toml:"enable_stream_unpack"`
 }
 
 // Configure how to start and recover nydusd daemons
