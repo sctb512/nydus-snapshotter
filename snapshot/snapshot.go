@@ -16,7 +16,6 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	"github.com/pkg/errors"
 
@@ -67,7 +66,8 @@ type snapshotter struct {
 
 type fetchWaiter struct {
 	parent string
-	wg     sync.WaitGroup
+	// wg     sync.WaitGroup
+	done chan struct{}
 }
 
 func NewSnapshotter(ctx context.Context, cfg *config.SnapshotterConfig) (snapshots.Snapshotter, error) {

@@ -38,20 +38,24 @@ func chooseProcessor(ctx context.Context, logger *logrus.Entry,
 		mounts, _ := sn.mounts(ctx, labels, s)
 
 		log.L.Infof("[abin] in ociSkipHandler")
-		// fetchWaiter := fetchWaiter{parent: parent}
+		fetchWaiter := fetchWaiter{
+			parent: parent,
+			done:   make(chan struct{}),
+		}
 
 		// fetchWaiter.wg.Add(1)
-		go func() {
-			err := sn.fs.TryFetchAndApplyLayer(ctx, labels, mounts)
-			if err != nil {
-				log.L.WithError(err).Errorf("failed to fetch and apply layer")
-				return
-			}
-			// fetchWaiter.wg.Done()
-		}()
-		// sn.fetchWaiter[key] = fetchWaiter
+		// go func() {
+		err := sn.fs.TryFetchAndApplyLayer(ctx, labels, mounts)
+		if err != nil {
+			log.L.WithError(err).Errorf("failed to fetch and apply layer")
+			// return
+		}
+		// fetchWaiter.wg.Done()
+		// }()
+		sn.fetchWaiter[key] = fetchWaiter
 
-		return false, mounts, err
+		// return false, mounts, err
+		return true, mounts, err
 	}
 
 	target, remote := labels[label.TargetSnapshotRef]

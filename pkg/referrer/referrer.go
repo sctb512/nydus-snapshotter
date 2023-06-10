@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/containerd/containerd/archive"
+	"github.com/containerd/containerd/archive/compression"
 	"github.com/containerd/containerd/errdefs"
 	"github.com/containerd/containerd/log"
 	"github.com/containerd/containerd/mount"
@@ -362,8 +363,16 @@ func (r *referrer) fetchLayer(ctx context.Context, ref string, layer ocispec.Des
 	log.L.Infof("[abin] fetch blob %s successful, type: %s", layer.Digest, layer.MediaType)
 	defer blobRc.Close()
 
+	newBlobRc := blobRc.(io.Reader)
+
+	ds, err := compression.DecompressStream(newBlobRc)
+	if err != nil {
+		return errors.Wrap(err, "unpack stream")
+	}
+	defer ds.Close()
+
 	log.L.Infof("[abin] apply mounts: %v", mounts)
-	if err := apply(ctx, mounts, blobRc); err != nil {
+	if err := apply(ctx, mounts, ds); err != nil {
 		return errors.Wrap(err, "apply blob from layer")
 	}
 	log.L.Infof("[abin] apply successful, mounts: %v", mounts)
