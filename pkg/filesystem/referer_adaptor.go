@@ -65,7 +65,7 @@ func (fs *Filesystem) TryFetchMetadata(ctx context.Context, labels map[string]st
 	return nil
 }
 
-func (fs *Filesystem) TryFetchAndApplyLayer(ctx context.Context, labels map[string]string, mounts []mount.Mount) error {
+func (fs *Filesystem) TryFetchAndApplyLayer(ctx context.Context, labels map[string]string, mounts []mount.Mount, doneErr chan error) error {
 	log.L.Infof("[abin] in TryFetchAndApplyLayer labels: %v", labels)
 	ref, ok := labels[snpkg.TargetRefLabel]
 	if !ok {
@@ -79,7 +79,7 @@ func (fs *Filesystem) TryFetchAndApplyLayer(ctx context.Context, labels map[stri
 
 	log.L.Infof("[abin] TryFetchAndApplyLayer ref: %s", ref)
 
-	if err := fs.referrerMgr.TryFetchAndApplyLayer(ctx, ref, layerdigest, mounts); err != nil {
+	if err := fs.referrerMgr.TryFetchAndApplyLayer(ctx, ref, layerdigest, mounts, doneErr); err != nil {
 		return errors.Wrap(err, "try fetch and apply layer")
 	}
 

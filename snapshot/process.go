@@ -39,22 +39,22 @@ func chooseProcessor(ctx context.Context, logger *logrus.Entry,
 
 		log.L.Infof("[abin] in ociSkipHandler")
 		fetchWaiter := fetchWaiter{
-			parent: parent,
-			done:   make(chan struct{}),
+			parent:  parent,
+			doneErr: make(chan error),
 		}
 
-		// fetchWaiter.wg.Add(1)
-		// go func() {
-		err := sn.fs.TryFetchAndApplyLayer(ctx, labels, mounts)
+		err := sn.fs.TryFetchAndApplyLayer(ctx, labels, mounts, fetchWaiter.doneErr)
 		if err != nil {
 			log.L.WithError(err).Errorf("failed to fetch and apply layer")
-			// return
 		}
-		// fetchWaiter.wg.Done()
-		// }()
-		sn.fetchWaiter[key] = fetchWaiter
+		// currentKeySlice := strings.Split(key, " ")
+		// currentKey := currentKeySlice[len(currentKeySlice)-1]
+		// sn.fetchWaiter[currentKey] = fetchWaiter
 
-		// return false, mounts, err
+		if err := <-fetchWaiter.doneErr; err != nil {
+			log.L.Infof("fetch and unpack failed for key %s: %v", key, err)
+		}
+
 		return true, mounts, err
 	}
 
@@ -140,8 +140,11 @@ func chooseProcessor(ctx context.Context, logger *logrus.Entry,
 		// 	var parentKey = parent
 		// 	for {
 		// 		fetcher := sn.fetchWaiter[parentKey]
-		// 		fetcher.wg.Wait()
 		// 		parentKey = fetcher.parent
+
+		// 		if err := <-fetcher.doneErr; err != nil {
+		// 			log.L.Infof("fetch and unpack failed for key %s: %v", parentKey, err)
+		// 		}
 
 		// 		if parentKey == "" {
 		// 			break

@@ -345,7 +345,7 @@ func apply(ctx context.Context, mounts []mount.Mount, r io.Reader) error {
 }
 
 func (r *referrer) fetchLayer(ctx context.Context, ref string, layer ocispec.Descriptor,
-	mounts []mount.Mount) error {
+	mounts []mount.Mount, doneErr chan error) error {
 
 	// Create an new resolver to request.
 	resolver := r.remote.Resolve(ctx, ref)
@@ -355,33 +355,45 @@ func (r *referrer) fetchLayer(ctx context.Context, ref string, layer ocispec.Des
 		return errors.Wrap(err, "get fetcher")
 	}
 
-	log.L.Infof("[abin] fetch blob %s, type: %s", layer.Digest, layer.MediaType)
-	blobRc, err := fetchBlob(ctx, fetcher, layer)
-	if err != nil {
-		return errors.Wrapf(err, "failed to fetch blob %s", layer.Digest)
-	}
-	log.L.Infof("[abin] fetch blob %s successful, type: %s", layer.Digest, layer.MediaType)
-	defer blobRc.Close()
+	go func() {
+		log.L.Infof("[abin] fetch blob %s, type: %s", layer.Digest, layer.MediaType)
+		blobRc, err := fetchBlob(ctx, fetcher, layer)
+		if err != nil {
+			doneErr <- errors.Wrapf(err, "failed to fetch blob %s", layer.Digest)
+		}
+		log.L.Infof("[abin] fetch blob %s successful, type: %s", layer.Digest, layer.MediaType)
+		defer func() {
+			if blobRc != nil {
+				blobRc.Close()
+			}
+		}()
 
-	newBlobRc := blobRc.(io.Reader)
+		newBlobRc := blobRc.(io.Reader)
 
-	ds, err := compression.DecompressStream(newBlobRc)
-	if err != nil {
-		return errors.Wrap(err, "unpack stream")
-	}
-	defer ds.Close()
+		ds, err := compression.DecompressStream(newBlobRc)
+		if err != nil {
+			doneErr <- errors.Wrap(err, "unpack stream")
+		}
+		defer func() {
+			if ds != nil {
+				ds.Close()
+			}
+		}()
 
-	log.L.Infof("[abin] apply mounts: %v", mounts)
-	if err := apply(ctx, mounts, ds); err != nil {
-		return errors.Wrap(err, "apply blob from layer")
-	}
-	log.L.Infof("[abin] apply successful, mounts: %v", mounts)
+		log.L.Infof("[abin] apply mounts: %v", mounts)
+		if err := apply(ctx, mounts, ds); err != nil {
+			doneErr <- errors.Wrap(err, "apply blob from layer")
+		}
+		log.L.Infof("[abin] apply successful, mounts: %v", mounts)
+
+		close(doneErr)
+	}()
 
 	return nil
 }
 
 // applyLayer fetches and apply OCI blob file with mounts.
-func (r *referrer) applyLayer(ctx context.Context, ref string, digest digest.Digest, mounts []mount.Mount) error {
+func (r *referrer) applyLayer(ctx context.Context, ref string, digest digest.Digest, mounts []mount.Mount, doneErr chan error) error {
 	handle := func() error {
 		log.L.Infof("[abin] apply layer ref: %s", ref)
 
@@ -390,7 +402,7 @@ func (r *referrer) applyLayer(ctx context.Context, ref string, digest digest.Dig
 			return errors.Wrap(err, "fetch manifest")
 		}
 
-		if err := r.fetchLayer(ctx, ref, *layer, mounts); err != nil {
+		if err := r.fetchLayer(ctx, ref, *layer, mounts, doneErr); err != nil {
 			return errors.Wrap(err, "fetch blobs")
 		}
 

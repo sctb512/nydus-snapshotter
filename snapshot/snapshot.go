@@ -67,7 +67,7 @@ type snapshotter struct {
 type fetchWaiter struct {
 	parent string
 	// wg     sync.WaitGroup
-	done chan struct{}
+	doneErr chan error
 }
 
 func NewSnapshotter(ctx context.Context, cfg *config.SnapshotterConfig) (snapshots.Snapshotter, error) {

@@ -102,7 +102,7 @@ func (manager *Manager) TryFetchMetadata(ctx context.Context, ref string, manife
 }
 
 // TryFetchAndApplyLayer try to fetch and apply PCI blob layer with mounts.
-func (manager *Manager) TryFetchAndApplyLayer(ctx context.Context, ref string, digest digest.Digest, mounts []mount.Mount) error {
+func (manager *Manager) TryFetchAndApplyLayer(ctx context.Context, ref string, digest digest.Digest, mounts []mount.Mount, doneErr chan error) error {
 	keyChain, err := auth.GetKeyChainByRef(ref, nil)
 	if err != nil {
 		return errors.Wrap(err, "get key chain")
@@ -111,7 +111,7 @@ func (manager *Manager) TryFetchAndApplyLayer(ctx context.Context, ref string, d
 	logrus.Infof("[abin] manager: %#v", manager)
 	referrer := newReferrer(keyChain, manager.insecure)
 
-	if err := referrer.applyLayer(ctx, ref, digest, mounts); err != nil {
+	if err := referrer.applyLayer(ctx, ref, digest, mounts, doneErr); err != nil {
 		return err
 	}
 
