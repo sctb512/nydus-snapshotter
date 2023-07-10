@@ -12,8 +12,8 @@ env:
 jobs:
   build:
     name: Build and Lint
-    timeout-minutes: 10
-    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    runs-on: ubuntu-20.04
     steps:
       - name: Set up Go
         uses: actions/setup-go@v3
@@ -28,6 +28,23 @@ jobs:
           key: ${{ runner.os }}-go-${{ hashFiles('go.sum') }}
           restore-keys: |
             ${{ runner.os }}-go
+      - name: Setup bcc for eBPF
+        run: |
+          sudo apt-get update
+          sudo apt install -y zip bison build-essential cmake flex git libedit-dev \
+          libllvm12 llvm-12-dev libclang-12-dev python zlib1g-dev libelf-dev libfl-dev python3-setuptools \
+          liblzma-dev arping netperf iperf
+          git clone https://github.com/iovisor/bcc.git; cd bcc
+          git checkout v0.24.0
+          mkdir build; cd build
+          cmake ..
+          make
+          sudo make install
+          cmake -DPYTHON_CMD=python3 ..
+          pushd src/python/
+          make
+          sudo make install
+          popd
       - name: Build
         run: |
           go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.51.2
@@ -37,8 +54,8 @@ jobs:
           make check
   build-optimizer:
     name: Build optimizer
-    timeout-minutes: 10
-    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    runs-on: ubuntu-20.04
     steps:
       - name: Set up Go
         uses: actions/setup-go@v3
@@ -53,6 +70,23 @@ jobs:
           key: ${{ runner.os }}-go-${{ hashFiles('go.sum') }}
           restore-keys: |
             ${{ runner.os }}-go
+      - name: Setup bcc for eBPF
+        run: |
+          sudo apt-get update
+          sudo apt install -y zip bison build-essential cmake flex git libedit-dev \
+          libllvm12 llvm-12-dev libclang-12-dev python zlib1g-dev libelf-dev libfl-dev python3-setuptools \
+          liblzma-dev arping netperf iperf
+          git clone https://github.com/iovisor/bcc.git; cd bcc
+          git checkout v0.24.0
+          mkdir build; cd build
+          cmake ..
+          make
+          sudo make install
+          cmake -DPYTHON_CMD=python3 ..
+          pushd src/python/
+          make
+          sudo make install
+          popd
       - name: Build
         run: |
           go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.51.2
@@ -118,8 +152,8 @@ jobs:
 
   coverage:
     name: Code coverage
-    timeout-minutes: 10
-    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    runs-on: ubuntu-20.04
     needs: [build]
     steps:
       - name: Install Go
@@ -135,6 +169,23 @@ jobs:
           key: ${{ runner.os }}-go-${{ hashFiles('go.sum') }}
           restore-keys: |
             ${{ runner.os }}-go
+      - name: Setup bcc for eBPF
+        run: |
+          sudo apt-get update
+          sudo apt install -y zip bison build-essential cmake flex git libedit-dev \
+          libllvm12 llvm-12-dev libclang-12-dev python zlib1g-dev libelf-dev libfl-dev python3-setuptools \
+          liblzma-dev arping netperf iperf
+          git clone https://github.com/iovisor/bcc.git; cd bcc
+          git checkout v0.24.0
+          mkdir build; cd build
+          cmake ..
+          make
+          sudo make install
+          cmake -DPYTHON_CMD=python3 ..
+          pushd src/python/
+          make
+          sudo make install
+          popd
       - name: Run unit tests.
         run: make cover
       - name: Upload coverage to Codecov

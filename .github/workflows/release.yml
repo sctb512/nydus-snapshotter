@@ -12,7 +12,7 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v3
@@ -37,6 +37,23 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('tools/optimizer-server/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo
+      - name: Setup bcc for eBPF
+        run: |
+          sudo apt-get update
+          sudo apt install -y zip bison build-essential cmake flex git libedit-dev \
+          libllvm12 llvm-12-dev libclang-12-dev python zlib1g-dev libelf-dev libfl-dev python3-setuptools \
+          liblzma-dev arping netperf iperf
+          git clone https://github.com/iovisor/bcc.git; cd bcc
+          git checkout v0.20.0
+          mkdir build; cd build
+          cmake ..
+          make
+          sudo make install
+          cmake -DPYTHON_CMD=python3 ..
+          pushd src/python/
+          make
+          sudo make install
+          popd
       - name: build nydus-snapshotter and optimizer
         run: |
           go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.51.2
