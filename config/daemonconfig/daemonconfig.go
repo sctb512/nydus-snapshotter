@@ -33,6 +33,7 @@ type DaemonConfig interface {
 	FillAuth(kc *auth.PassKeyChain)
 	StorageBackend() (StorageBackendType, *BackendConfig)
 	UpdateMirrors(mirrorsConfigDir, registryHost string) error
+	GetImageHost() string
 	DumpString() (string, error)
 	DumpFile(path string) error
 }

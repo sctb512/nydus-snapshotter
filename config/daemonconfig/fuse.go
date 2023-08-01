@@ -86,6 +86,10 @@ func (c *FuseDaemonConfig) UpdateMirrors(mirrorsConfigDir, registryHost string) 
 	return nil
 }
 
+func (c *FuseDaemonConfig) GetImageHost() string {
+	return c.Device.Backend.Config.Host
+}
+
 func (c *FuseDaemonConfig) StorageBackend() (string, *BackendConfig) {
 	return c.Device.Backend.BackendType, &c.Device.Backend.Config
 }

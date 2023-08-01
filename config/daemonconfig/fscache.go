@@ -79,6 +79,10 @@ func (c *FscacheDaemonConfig) UpdateMirrors(mirrorsConfigDir, registryHost strin
 	return nil
 }
 
+func (c *FscacheDaemonConfig) GetImageHost() string {
+	return c.Config.BackendConfig.Host
+}
+
 func (c *FscacheDaemonConfig) StorageBackend() (string, *BackendConfig) {
 	return c.Config.BackendType, &c.Config.BackendConfig
 }
