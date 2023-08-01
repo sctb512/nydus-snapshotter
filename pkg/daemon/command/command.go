@@ -99,6 +99,10 @@ func BuildCommand(opts []Opt) ([]string, error) {
 	return args, nil
 }
 
+func (dc *DaemonCommand) GetConfigPath() string {
+	return dc.Config
+}
+
 func WithMode(m string) Opt {
 	return func(cmd *DaemonCommand) {
 		cmd.Mode = m

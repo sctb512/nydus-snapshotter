@@ -17,16 +17,19 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 
 	"github.com/containerd/containerd/log"
 
 	"github.com/containerd/nydus-snapshotter/config"
 	"github.com/containerd/nydus-snapshotter/config/daemonconfig"
+	"github.com/containerd/nydus-snapshotter/pkg/auth"
 	"github.com/containerd/nydus-snapshotter/pkg/daemon/types"
 	"github.com/containerd/nydus-snapshotter/pkg/errdefs"
 	"github.com/containerd/nydus-snapshotter/pkg/supervisor"
 	"github.com/containerd/nydus-snapshotter/pkg/utils/erofs"
 	"github.com/containerd/nydus-snapshotter/pkg/utils/mount"
+	"github.com/containerd/nydus-snapshotter/pkg/utils/registry"
 	"github.com/containerd/nydus-snapshotter/pkg/utils/retry"
 )
 
@@ -66,6 +69,7 @@ type Daemon struct {
 	// fusedev shared mode: zero, one or more RAFS instances
 	// fscache shared mode: zero, one or more RAFS instances
 	Instances rafsSet
+	// authCache *lru.Cache
 
 	// Protect nydusd http client
 	cmu sync.Mutex
@@ -82,6 +86,7 @@ type Daemon struct {
 	Version               types.BuildTimeInfo
 
 	ref int32
+
 	// Cache the nydusd daemon state to avoid frequently querying nydusd by API.
 	state types.DaemonState
 }
@@ -222,7 +227,7 @@ func (d *Daemon) IsSharedDaemon() bool {
 	return d.HostMountpoint() == config.GetRootMountpoint()
 }
 
-func (d *Daemon) SharedMount(rafs *Rafs) error {
+func (d *Daemon) SharedMount(rafs *Rafs, authCache *auth.Cache) error {
 	defer d.SendStates()
 
 	switch d.States.FsDriver {
@@ -232,13 +237,13 @@ func (d *Daemon) SharedMount(rafs *Rafs) error {
 		}
 		return nil
 	case config.FsDriverFusedev:
-		return d.sharedFusedevMount(rafs)
+		return d.sharedFusedevMount(rafs, authCache)
 	default:
 		return errors.Errorf("unsupported fs driver %s", d.States.FsDriver)
 	}
 }
 
-func (d *Daemon) sharedFusedevMount(rafs *Rafs) error {
+func (d *Daemon) sharedFusedevMount(rafs *Rafs, authCache *auth.Cache) error {
 	client, err := d.GetClient()
 	if err != nil {
 		return errors.Wrapf(err, "mount instance %s", rafs.SnapshotID)
@@ -253,6 +258,25 @@ func (d *Daemon) sharedFusedevMount(rafs *Rafs) error {
 	if err != nil {
 		return errors.Wrapf(err, "Failed to reload instance configuration %s",
 			d.ConfigFile(rafs.SnapshotID))
+	}
+
+	if config.IsKeyringEnabled() {
+		image, err := registry.ParseImage(rafs.ImageID)
+		if err != nil {
+			return errors.Wrapf(err, "parse image %s", rafs.ImageID)
+		}
+
+		logrus.Debugf("get key for %s", image.Host)
+		cachedAuth, err := authCache.GetAuth(image.Host)
+		if err != nil {
+			return err
+		}
+
+		keyChain, err := auth.FromBase64(cachedAuth)
+		if err != nil {
+			return err
+		}
+		c.FillAuth(&keyChain)
 	}
 
 	cfg, err := c.DumpString()
@@ -624,7 +648,7 @@ func (d *Daemon) CloneInstances(src *Daemon) {
 }
 
 // Daemon must be started and reach RUNNING state before call this method
-func (d *Daemon) RecoveredMountInstances() error {
+func (d *Daemon) RecoveredMountInstances(authCache *auth.Cache) error {
 	if d.IsSharedDaemon() {
 		d.Instances.Lock()
 		defer d.Instances.Unlock()
@@ -641,7 +665,7 @@ func (d *Daemon) RecoveredMountInstances() error {
 		for _, i := range instances {
 			if d.HostMountpoint() != i.GetMountpoint() {
 				log.L.Infof("Recovered mount instance %s", i.SnapshotID)
-				if err := d.SharedMount(i); err != nil {
+				if err := d.SharedMount(i, authCache); err != nil {
 					return err
 				}
 			}
@@ -657,6 +681,7 @@ func NewDaemon(opt ...NewDaemonOpt) (*Daemon, error) {
 	d.States.ID = newID()
 	d.States.DaemonMode = config.DaemonModeDedicated
 	d.Instances = rafsSet{instances: make(map[string]*Rafs)}
+	// d.authCache = lru.New(32)
 
 	for _, o := range opt {
 		err := o(d)

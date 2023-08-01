@@ -7,12 +7,14 @@
 package manager
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"strings"
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 
 	"github.com/containerd/containerd/log"
 
@@ -23,6 +25,7 @@ import (
 	"github.com/containerd/nydus-snapshotter/pkg/errdefs"
 	"github.com/containerd/nydus-snapshotter/pkg/metrics/collector"
 	metrics "github.com/containerd/nydus-snapshotter/pkg/metrics/tool"
+	"github.com/containerd/nydus-snapshotter/pkg/utils/registry"
 )
 
 // Fork the nydusd daemon with the process PID decided
@@ -191,6 +194,25 @@ func (m *Manager) BuildDaemonCommand(d *daemon.Daemon, bin string, upgrade bool)
 	log.L.Infof("nydusd command: %s %s", nydusdPath, strings.Join(args, " "))
 
 	cmd := exec.Command(nydusdPath, args...)
+
+	if config.IsKeyringEnabled() && !d.IsSharedDaemon() {
+		if d.Instances.Len() > 1 {
+			return nil, errors.New("nydusd is not running in shared mode but the instance length is large than 1")
+		}
+
+		imageID := d.Instances.Head().ImageID
+		image, err := registry.ParseImage(imageID)
+		if err != nil {
+			return nil, errors.Wrapf(err, "parse image %s", imageID)
+		}
+
+		logrus.Debugf("get key for %s", image.Host)
+		auth, err := m.AuthCache.GetAuth(image.Host)
+		if err != nil {
+			return nil, err
+		}
+		cmd.Env = append(cmd.Env, fmt.Sprintf("IMAGE_PULL_AUTH=%s", auth))
+	}
 
 	// nydusd standard output and standard error rather than its logs are
 	// always redirected to snapshotter's respectively

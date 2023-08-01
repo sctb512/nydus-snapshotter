@@ -141,7 +141,7 @@ func DumpConfigString(c interface{}) (string, error) {
 
 // Achieve a daemon configuration from template or snapshotter's configuration
 func SupplementDaemonConfig(c DaemonConfig, imageID, snapshotID string,
-	vpcRegistry bool, labels map[string]string, params map[string]string) error {
+	vpcRegistry bool, labels map[string]string, params map[string]string, fn func(string, *auth.PassKeyChain)) error {
 
 	image, err := registry.ParseImage(imageID)
 	if err != nil {
@@ -169,7 +169,11 @@ func SupplementDaemonConfig(c DaemonConfig, imageID, snapshotID string,
 		// when repository is public.
 		keyChain := auth.GetRegistryKeyChain(registryHost, imageID, labels)
 		c.Supplement(registryHost, image.Repo, snapshotID, params)
-		c.FillAuth(keyChain)
+		if config.IsKeyringEnabled() && fn != nil {
+			fn(registryHost, keyChain)
+		} else {
+			c.FillAuth(keyChain)
+		}
 
 	// Localfs and OSS backends don't need any update,
 	// just use the provided config in template
