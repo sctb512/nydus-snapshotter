@@ -276,6 +276,19 @@ func kprobeSyscall(m *bpf.Module, syscall string, kprobeEntry string) error {
 	return nil
 }
 
+func kretprobeSyscall(m *bpf.Module, syscall string, kprobeEntry string) error {
+	vfsReadKprobe, err := m.LoadKprobe(kprobeEntry)
+	if err != nil {
+		return errors.Wrapf(err, "load entry %s", kprobeEntry)
+	}
+
+	err = m.AttachKretprobe(syscall, vfsReadKprobe, -1)
+	if err != nil {
+		return errors.Wrapf(err, "attach entry %s", kprobeEntry)
+	}
+	return nil
+}
+
 func InitKprobeTable(id string) (*bpf.Module, *bpf.Table, error) {
 	source := strings.ReplaceAll(templateSource, "EXCEPTED_CONTAINERD_ID", id)
 
@@ -284,16 +297,19 @@ func InitKprobeTable(id string) (*bpf.Module, *bpf.Table, error) {
 	if err := kprobeSyscall(m, "vfs_read", "trace_vfs_read_entry"); err != nil {
 		return nil, nil, err
 	}
+	if err := kprobeSyscall(m, "vfs_readv", "trace_vfs_readv_entry"); err != nil {
+		return nil, nil, err
+	}
 	if err := kprobeSyscall(m, "generic_file_splice_read", "trace_splice_read_entry"); err != nil {
 		return nil, nil, err
 	}
-	if err := kprobeSyscall(m, "vfs_read", "trace_read_return"); err != nil {
+	if err := kretprobeSyscall(m, "vfs_read", "trace_read_return"); err != nil {
 		return nil, nil, err
 	}
-	if err := kprobeSyscall(m, "vfs_readv", "trace_read_return"); err != nil {
+	if err := kretprobeSyscall(m, "vfs_readv", "trace_read_return"); err != nil {
 		return nil, nil, err
 	}
-	if err := kprobeSyscall(m, "generic_file_splice_read", "trace_read_return"); err != nil {
+	if err := kretprobeSyscall(m, "generic_file_splice_read", "trace_read_return"); err != nil {
 		return nil, nil, err
 	}
 	if err := kprobeSyscall(m, "__do_fault", "trace_page_fault"); err != nil {
