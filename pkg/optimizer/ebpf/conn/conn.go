@@ -11,8 +11,10 @@ import (
 	"encoding/binary"
 	"time"
 
+	"github.com/containerd/containerd/log"
 	bpf "github.com/iovisor/gobpf/bcc"
 	"github.com/pkg/errors"
+	"golang.org/x/sys/unix"
 )
 
 import "C"
@@ -41,9 +43,11 @@ struct buf_s {
     char buf[FILE_PATH_LEN*2];
 };
 
-char container_id[CONTAINER_ID_LEN];
+struct buf_i {
+    char buf[CONTAINER_ID_LEN];
+ };
 
-BPF_ARRAY(id_buf, container_id, 1);
+BPF_ARRAY(id_buf, struct buf_i, 1);
 BPF_PERCPU_ARRAY(path_buf, struct buf_s, 1);
 BPF_PERCPU_ARRAY(event_buf, struct request_info, 1);
 BPF_HASH(vfs_read_start_trace, u64, struct request_info);
@@ -60,11 +64,13 @@ static int container_id_filter() {
     struct kernfs_node *knode, *pknode;
     char container_id[CONTAINER_ID_LEN];
     char end = 0;
-    int zero = 0;
-    char *buf_id = container_id.lookup(&zero);
-    if (!buf_id) {
+    uint32_t zero = 0;
+    struct buf_i *id = id_buf.lookup(&zero);
+    if (!id) {
         return -1;
     }
+
+    bpf_printk("[abin] container id: %s", id->buf);
 
     curr_task = (struct task_struct *) bpf_get_current_task();
 
@@ -75,7 +81,7 @@ static int container_id_filter() {
     else
         bpf_probe_read(container_id, 1, &end);
 
-    return local_strcmp(container_id, buf_id);
+    return local_strcmp(container_id, id->buf);
 }
 
 static void fill_file_path(struct file *file, char *file_path) {
@@ -296,6 +302,11 @@ func kretprobeSyscall(m *bpf.Module, syscall string, kprobeEntry string) error {
 	return nil
 }
 
+const (
+	filePathLength    = 256
+	containerIDLength = 128
+)
+
 func InitKprobeTable(id string) (*bpf.Module, *bpf.Table, error) {
 	m := bpf.NewModule(sourceCode, []string{})
 
@@ -322,7 +333,34 @@ func InitKprobeTable(id string) (*bpf.Module, *bpf.Table, error) {
 	}
 
 	containerIDTable := bpf.NewTable(m.TableId("id_buf"), m)
-	if err := containerIDTable.Set([]byte{0}, []byte(id)); err != nil {
+
+	idSlice, err := unix.ByteSliceFromString(id)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var arr [containerIDLength]byte
+	copy(arr[:], idSlice)
+	containerID := ContainerID{
+		buf: arr,
+	}
+
+	value := new(bytes.Buffer)
+	err = binary.Write(value, binary.LittleEndian, containerID)
+	if err != nil {
+		log.L.Infof("[abin] failed to convert struct to byte slice: %v", containerID)
+		return nil, nil, err
+	}
+
+	key := new(bytes.Buffer)
+	var tmp uint32 = 0
+	err = binary.Write(key, binary.LittleEndian, tmp)
+	if err != nil {
+		log.L.Infof("[abin] failed to convert int to byte slice: %v", 0)
+		return nil, nil, err
+	}
+
+	if err := containerIDTable.Set(key.Bytes(), value.Bytes()); err != nil {
 		return nil, nil, err
 	}
 
@@ -331,10 +369,6 @@ func InitKprobeTable(id string) (*bpf.Module, *bpf.Table, error) {
 	return m, table, nil
 }
 
-const (
-	filePathLength = 256
-)
-
 type RawEventInfo struct {
 	Command  [16]byte
 	Path     [filePathLength]byte
@@ -342,6 +376,9 @@ type RawEventInfo struct {
 	Length   uint32
 }
 
+type ContainerID struct {
+	buf [containerIDLength]byte
+}
 type EventInfo struct {
 	Timestamp int64
 	Command   string
