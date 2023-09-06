@@ -175,15 +175,15 @@ func (m *Manager) doDaemonFailover(d *daemon.Daemon) {
 		return
 	}
 
+	retry := 2 * time.Minute
 	// Failover nydusd still depends on the old supervisor
-
-	if err := m.StartDaemon(d); err != nil {
-		log.L.Errorf("fail to start daemon %s when recovering", d.ID())
+	if err := m.StartDaemonWithRetry(d, retry); err != nil {
+		log.L.WithError(err).Errorf("failed to start daemon when recovering")
 		return
 	}
 
 	if err := d.WaitUntilState(types.DaemonStateInit); err != nil {
-		log.L.WithError(err).Errorf("daemon didn't reach state %s,", types.DaemonStateInit)
+		log.L.WithError(err).Errorf("daemon didn't reach state %s", types.DaemonStateInit)
 		return
 	}
 
@@ -209,8 +209,11 @@ func (m *Manager) doDaemonRestart(d *daemon.Daemon) {
 	}
 
 	d.ClearVestige()
-	if err := m.StartDaemon(d); err != nil {
-		log.L.Errorf("fails to start daemon %s when recovering", d.ID())
+
+	retry := 2 * time.Minute
+	// Failover nydusd still depends on the old supervisor
+	if err := m.StartDaemonWithRetry(d, retry); err != nil {
+		log.L.WithError(err).Errorf("failed to start daemon when recovering")
 		return
 	}
 
