@@ -21,6 +21,7 @@ import (
 	"github.com/containerd/nri/pkg/stub"
 	"github.com/containerd/nydus-snapshotter/pkg/errdefs"
 	"github.com/containerd/nydus-snapshotter/pkg/optimizer"
+	"github.com/containerd/nydus-snapshotter/pkg/optimizer/ebpf"
 	"github.com/containerd/nydus-snapshotter/version"
 	"github.com/pelletier/go-toml"
 )
@@ -121,6 +122,16 @@ var (
 
 func (p *plugin) Configure(config, runtime, version string) (stub.EventMask, error) {
 	log.Infof("got configuration data: %q from runtime %s %s", config, runtime, version)
+
+	if cfg.optimizerCfg.ServerType == "ebpf" {
+		go func() {
+			err := ebpf.StartEbpfProgram()
+			if err != nil {
+				log.WithError(err).Errorf("start ebpf program")
+			}
+		}()
+	}
+
 	if config == "" {
 		return p.mask, nil
 	}
@@ -178,6 +189,10 @@ func (p *plugin) StopContainer(_ *api.PodSandbox, container *api.Container) ([]*
 func (p *plugin) onClose() {
 	for _, server := range globalServer {
 		server.Stop()
+	}
+
+	if err := ebpf.StopEbpfProgram(); err != nil {
+		log.WithError(err).Errorf("failed to stop ebpf program")
 	}
 }
 
